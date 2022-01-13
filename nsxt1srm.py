@@ -67,11 +67,12 @@ def _getHeaders():
     return getHeaders
 
 
-def getURL(host, url, sslcontext):
+def getURL(url, sslcontext):
+    uspec = _buildUSERenv()
     fullurl = APIbaseURL + url
     payload = ''
     headers = _getHeaders()
-    conn = http.client.HTTPSConnection(host, context=sslcontext)
+    conn = http.client.HTTPSConnection(uspec['targethost'], context=sslcontext)
     conn.request("GET", fullurl, payload, headers)
     ures = conn.getresponse()
     if not ures.status == 200:
@@ -85,9 +86,10 @@ def getURL(host, url, sslcontext):
     return fdata
 
 
-def putURL(host, url, intpayload, sslcontext):
+def putURL(url, intpayload, sslcontext):
+    uspec = _buildUSERenv()
     fullurl = APIbaseURL + url
-    conn = http.client.HTTPSConnection(host, context=sslcontext)
+    conn = http.client.HTTPSConnection(uspec['targethost'], context=sslcontext)
     payload = json.dumps(intpayload)
     headers = _getHeaders()
     conn.request("PUT", fullurl, payload, headers)
@@ -97,30 +99,53 @@ def putURL(host, url, intpayload, sslcontext):
     return rs
 
 
+def getTier1():
+    rspec = dict()
+    jdata = getURL('/infra/tier-1s', sslcheck)
+
+    print('Tier 1 ID                           \tDisplay Name')
+    print('------------------------------------\t----------------------------------------------')
+    if jdata['results']:
+        for i in jdata['results']:
+            print(str(i['unique_id']) + '\t' + str(i['display_name']))
+        rspec['scriptmsg'] = 'Tier1 Routers - Listed'
+        rspec['scriptState'] = True
+    print('------------------------------------\t----------------------------------------------')
+    print('\n')
+    return rspec
+
+
 def confirmRouters():
     pspec = _buildPARAMenv()
     rspec = dict()
-    jdata = getURL(pspec['targethost'], '/infra/tier-1s', sslcheck)
+    jdata = getURL('/infra/tier-1s', sslcheck)
     if jdata['results']:
         for i in jdata['results']:
-            if i['display_name'] == pspec['tier1pri_name']:
+            if i['unique_id'] == pspec['tier1pri_id']:
                 rspec['pripath'] = i['path']
-            elif i['display_name'] == pspec['tier1dr_name']:
+            elif i['unique_id'] == pspec['tier1dr_id']:
                 rspec['drpath'] = i['path']
-            else:
-                rspec['scriptState'] = False
-                rspec['scriptmsg'] = 'Primary or DR not found - Confirm config environment variables'
-                return rspec
+        try:
+            rspec['pripath']
+        except KeyError:
+            rspec['scriptmsg'] = 'Primary T1 Not Found - Check Parameters'
+            rspec['scriptState'] = False
+            return rspec
+        try:
+            rspec['drpath']
+        except KeyError:
+            rspec['scriptmsg'] = 'DR T1 Not Found - Check Parameters'
+            rspec['scriptState'] = False
+            return rspec
         rspec['scriptmsg'] = 'Routers Confirmed - Paths Collected'
         rspec['scriptState'] = True
     return rspec
 
 
 def t1State(rs):
-    pspec = _buildPARAMenv()
     if rs['scriptState']:
-        prijdata = getURL(pspec['targethost'], rs['pripath'], sslcheck)
-        drjdata = getURL(pspec['targethost'], rs['drpath'], sslcheck)
+        prijdata = getURL(rs['pripath'], sslcheck)
+        drjdata = getURL(rs['drpath'], sslcheck)
         rs['tier1pri'] = prijdata
         rs['tier1dr'] = drjdata
         rs['scriptState'] = True
@@ -170,7 +195,6 @@ def prirouteadvcheck():
 
 
 def setDRroute(rs):
-    pspec = _buildPARAMenv()
     if rs['scriptState']:
         rs['old_tier1pri'] = rs['tier1pri']
         rs['old_tier1dr'] = rs['tier1dr']
@@ -184,8 +208,8 @@ def setDRroute(rs):
             'route_advertisement_types': rs['tier1dr']['route_advertisement_types'],
             'display_name': rs['tier1pri']['display_name']
         }
-        drputstate = putURL(pspec['targethost'], rs['drpath'], payloaddr, sslcheck)
-        priputstate = putURL(pspec['targethost'], rs['pripath'], payloadpri, sslcheck)
+        drputstate = putURL(rs['drpath'], payloaddr, sslcheck)
+        priputstate = putURL(rs['pripath'], payloadpri, sslcheck)
         rs['tier1pri'] = json.loads(priputstate)
         rs['tier1dr'] = json.loads(drputstate)
         rs['scriptState'] = True
@@ -197,11 +221,13 @@ def setUSER():
     uspec = dict()
     username = input('Username: ')
     password = input('Password: ')
+    api_host = input('API Host (NSX Manager): ')
     usrpwd = username + ":" + password
     usrpwd_b = usrpwd.encode('ascii')
     usrpwd_b64 = base64.b64encode(usrpwd_b)
     uspec['username'] = username
     uspec['b64usrpwd'] = usrpwd_b64.decode('ascii')
+    uspec['targethost'] = api_host
     uspec['modified_time'] = time.time()
     try:
         file = open(user_f, 'wb')
@@ -210,20 +236,19 @@ def setUSER():
         sys.exit()
     pickle.dump(uspec, file)
     file.close()
+    print('\n')
     print(uspec)
     return
 
 
 def setPARAM():
     pspec = dict()
-    print('TIER1 device names from NSX console.')
-    tier1_pri = input('Primary TIER1: ')
-    tier1_dr = input('DR TIER1: ')
-    print('NSX Host for API calls')
-    nsx_host = input('NSX Host for API: ')
-    pspec['tier1pri_name'] = tier1_pri
-    pspec['tier1dr_name'] = tier1_dr
-    pspec['targethost'] = nsx_host
+    getTier1()
+    print('Select the ID from above:')
+    tier1_pri_id = input('Primary ID TIER1: ')
+    tier1_dr_id = input('DR ID TIER1: ')
+    pspec['tier1pri_id'] = tier1_pri_id
+    pspec['tier1dr_id'] = tier1_dr_id
     pspec['modified_time'] = time.time()
     try:
         file = open(param_f, 'wb')
@@ -232,6 +257,7 @@ def setPARAM():
         sys.exit()
     pickle.dump(pspec, file)
     file.close()
+    print('\n')
     print(pspec)
     return
 
@@ -241,9 +267,15 @@ def main(argv):
         setUSER()
     elif argv[1] == "setparams":
         setPARAM()
+    elif argv[1] == "gettier1":
+        rspec = getTier1()
+        print(rspec['scriptmsg'])
+        print(rspec)
     elif argv[1] == "confirmt1":
         rspec = confirmRouters()
+        print('\n')
         print(rspec['scriptmsg'])
+        print('\n')
         print(rspec)
     elif argv[1] == "getrtconf":
         rspec = confirmRouters()
