@@ -18,14 +18,24 @@ Script arguments:
 - `checkfailback` - Checks the configuration matches the stored states in the "Failover" state
 - `failover` - Moves the routing config from Primary to DR - checks config before operation
 - `failback` - Moves the routing config from DR to Primary - checks config before operation
+- `execute` - Switches DR and Primary TIER1
 
+
+Timeout has been added to execute the script against virtual machines.  To change the timeout change the 'conn_timeout' 
+variable.  If the NSX server is not available it will wait 1000 seconds to timeout.
+
+```
+# API Parameters
+# Connection Timeout for NSX  x10 sec
+conn_timeout = 100
+```
 
 #### Notes:
 - setuser and setparams must be run before use.
 - User parameters are stored on the SRM device and must be changed if NSX changes
 
+Ensure script is copied to all SRM systems that run the service.  Copy `param.p  state.p  user.p` to copy over the parameters.
+
 Example SRM config for failover:
 
-`/bin/python3 /home/admin/nsxt1srm.py failover`
-
-
+`/bin/python3 /home/admin/nsxt1srm.py execute`

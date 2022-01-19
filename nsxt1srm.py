@@ -11,6 +11,8 @@ import time
 
 
 # API Parameters
+# Connection Timeout for NSX  x10 sec
+conn_timeout = 100
 APIbaseURL = "/policy/api/v1"
 sslcheck = ssl._create_unverified_context()
 
@@ -60,24 +62,38 @@ def _buildSTATE():
 def _getHeaders():
     uspec = _buildUSERenv()
     usrpwd_b64t = uspec['b64usrpwd']
-    getHeaders = {
+    get_headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Basic {usrpwd_b64t}'
     }
-    return getHeaders
+    return get_headers
 
 
 def getURL(url, sslcontext):
+    global ures, fdata
     uspec = _buildUSERenv()
     fullurl = APIbaseURL + url
     payload = ''
     headers = _getHeaders()
-    conn = http.client.HTTPSConnection(uspec['targethost'], context=sslcontext)
-    conn.request("GET", fullurl, payload, headers)
-    ures = conn.getresponse()
-    if not ures.status == 200:
-        print('Failed to return - Error: ' + str(ures.status))
-        exit()
+    constatus = 0
+    j = 0
+    while constatus != 200 and j < conn_timeout:
+        conn = http.client.HTTPSConnection(uspec['targethost'], context=sslcontext, timeout=10)
+        try:
+            conn.request("GET", fullurl, payload, headers)
+        except OSError:
+            pass
+        try:
+            ures = conn.getresponse()
+            constatus = ures.status
+        except (OSError, AttributeError):
+            constatus = 0
+        j = j + 1
+        if constatus == 503:
+            time.sleep(10)
+    if constatus == 0:
+        print('Connection Time Out')
+        sys.exit()
     udata = ures.read()
     try:
         fdata = json.loads(udata.decode("utf-8"))
@@ -169,6 +185,7 @@ def drrouteadvcheck():
             rs['scriptmsg'] = 'Error - DR route states do not match config requirements'
         else:
             rs['scriptState'] = True
+            rs['exMsg'] = "*** Executing Primary --> DR configuration ***"
             rs['scriptmsg'] = 'Config confirmed against stored config - DR Ready for failover'
             print(rs['scriptmsg'])
         return rs
@@ -180,17 +197,33 @@ def prirouteadvcheck():
     rs = t1State(rs)
     stored_state = _buildSTATE()
     if rs['scriptState']:
-       if not rs['tier1dr']['route_advertisement_types'] == stored_state['tier1pri']['route_advertisement_types']:
-           rs['scriptState'] = False
-           rs['scriptmsg'] = 'Failback Check Error - Pri route states do not match config requirements'
-       elif not rs['tier1pri']['route_advertisement_types'] == stored_state['tier1dr']['route_advertisement_types']:
-           rs['scriptState'] = False
-           rs['scriptmsg'] = 'Failback Check Error - DR route states do not match config requirements'
-       else:
-           rs['scriptState'] = True
-           rs['scriptmsg'] = 'Config confirmed against stored config - DR Ready for failback'
-           print(rs['scriptmsg'])
-       return rs
+        if not rs['tier1dr']['route_advertisement_types'] == stored_state['tier1pri']['route_advertisement_types']:
+            rs['scriptState'] = False
+            rs['scriptmsg'] = 'Failback Check Error - Pri route states do not match config requirements'
+        elif not rs['tier1pri']['route_advertisement_types'] == stored_state['tier1dr']['route_advertisement_types']:
+            rs['scriptState'] = False
+            rs['scriptmsg'] = 'Failback Check Error - DR route states do not match config requirements'
+        else:
+            rs['scriptState'] = True
+            rs['exMsg'] = "*** Executing DR --> Primary configuration ***"
+            rs['scriptmsg'] = 'Config confirmed against stored config - DR Ready for failback'
+            print(rs['scriptmsg'])
+        return rs
+
+
+def execute():
+    rs = dict()
+    prirs = prirouteadvcheck()
+    drrs = drrouteadvcheck()
+
+    if drrs['scriptState']:
+        rs = setDRroute(drrs)
+    elif prirs['scriptState']:
+        rs = setDRroute(prirs)
+    else:
+        rs['scriptState'] = False
+        rs['exMsg'] = "Nothing Changed"
+        rs['scriptmsg'] = 'Something is Wrong'
     return rs
 
 
@@ -213,7 +246,8 @@ def setDRroute(rs):
         rs['tier1pri'] = json.loads(priputstate)
         rs['tier1dr'] = json.loads(drputstate)
         rs['scriptState'] = True
-        rs['scriptmsg'] = "Config Applied Primary: " + str(payloadpri['route_advertisement_types']) + ' Config Applied DR: ' + str(payloaddr['route_advertisement_types'])
+        rs['scriptmsg'] = "Config Applied Primary: " + str(payloadpri['route_advertisement_types']) + \
+                          ' Config Applied DR: ' + str(payloaddr['route_advertisement_types'])
     return rs
 
 
@@ -244,7 +278,7 @@ def setUSER():
 def setPARAM():
     pspec = dict()
     getTier1()
-    print('Select the ID from above:')
+    print('Choose the ID from above:')
     tier1_pri_id = input('Primary ID TIER1: ')
     tier1_dr_id = input('DR ID TIER1: ')
     pspec['tier1pri_id'] = tier1_pri_id
@@ -269,6 +303,8 @@ def main(argv):
         setPARAM()
     elif argv[1] == "gettier1":
         rspec = getTier1()
+        json_d = json.dumps(rspec)
+        logger.debug(json_d)
         print(rspec['scriptmsg'])
         print(rspec)
     elif argv[1] == "confirmt1":
@@ -277,6 +313,7 @@ def main(argv):
         print(rspec['scriptmsg'])
         print('\n')
         print(rspec)
+        logger.debug(str(rspec))
     elif argv[1] == "getrtconf":
         rspec = confirmRouters()
         rspec = t1State(rspec)
@@ -286,6 +323,7 @@ def main(argv):
         print(rspec['tier1pri']['route_advertisement_types'])
         print('\r\nDR Route Advertisements Config: ')
         print(rspec['tier1dr']['route_advertisement_types'])
+        logger.debug(str(rspec))
     elif argv[1] == "setrtconf":
         rspec = confirmRouters()
         rspec = t1State(rspec)
@@ -322,12 +360,24 @@ def main(argv):
         print('\r\n')
         print(rspec)
         print('\r\n')
+        print(rspec['exMsg'])
+        print('\r\n')
         print(rspec['scriptmsg'])
     elif argv[1] == "failback":
         rspec = prirouteadvcheck()
         rspec = setDRroute(rspec)
         print('\r\n')
         print(rspec)
+        print('\r\n')
+        print(rspec['exMsg'])
+        print('\r\n')
+        print(rspec['scriptmsg'])
+    elif argv[1] == "execute":
+        rspec = execute()
+        print('\r\n')
+        print(rspec)
+        print('\r\n')
+        print(rspec['exMsg'])
         print('\r\n')
         print(rspec['scriptmsg'])
     else:
