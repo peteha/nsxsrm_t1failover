@@ -2,6 +2,7 @@
 # Developed for SRM v 8.5.0
 
 import http.client
+import os
 import ssl
 import json
 import sys
@@ -15,7 +16,9 @@ import time
 conn_timeout = 100
 APIbaseURL = "/policy/api/v1"
 sslcheck = ssl._create_unverified_context()
-
+# Environment Variables Set by SRM
+vmrecoveryname = os.environ.get('VMware_RecoveryName')
+vmrecoverymode = os.environ.get('VMware_RecoveryMode')
 
 # Persistent Storage Files
 # User Store
@@ -24,6 +27,11 @@ user_f = "user.p"
 param_f = "param.p"
 # System State Information
 state_f = "state.p"
+
+
+
+
+
 
 
 def _buildUSERenv():
@@ -213,6 +221,9 @@ def prirouteadvcheck():
 
 def execute():
     rs = dict()
+    rs['recoveryname'] = vmrecoveryname
+    rs['recoverymode'] = vmrecoverymode
+
     prirs = prirouteadvcheck()
     drrs = drrouteadvcheck()
 
@@ -375,7 +386,9 @@ def main(argv):
         print('\r\n')
         print(rspec['exMsg'])
         print('\r\n')
-        print(rspec['scriptmsg'])
+        print(rspec)
+        print('\r\n')
+        print('Executed as part of ' + str(vmrecoveryname) + ' - ' + str(vmrecoverymode))
     else:
         print('No argument set')
 
