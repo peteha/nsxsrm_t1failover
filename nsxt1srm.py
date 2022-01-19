@@ -303,8 +303,6 @@ def main(argv):
         setPARAM()
     elif argv[1] == "gettier1":
         rspec = getTier1()
-        json_d = json.dumps(rspec)
-        logger.debug(json_d)
         print(rspec['scriptmsg'])
         print(rspec)
     elif argv[1] == "confirmt1":
@@ -313,7 +311,6 @@ def main(argv):
         print(rspec['scriptmsg'])
         print('\n')
         print(rspec)
-        logger.debug(str(rspec))
     elif argv[1] == "getrtconf":
         rspec = confirmRouters()
         rspec = t1State(rspec)
@@ -323,7 +320,6 @@ def main(argv):
         print(rspec['tier1pri']['route_advertisement_types'])
         print('\r\nDR Route Advertisements Config: ')
         print(rspec['tier1dr']['route_advertisement_types'])
-        logger.debug(str(rspec))
     elif argv[1] == "setrtconf":
         rspec = confirmRouters()
         rspec = t1State(rspec)
