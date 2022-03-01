@@ -238,10 +238,41 @@ def execute():
     return rs
 
 
+def adcon():
+    rspec = confirmRouters()
+    rspec = t1State(rspec)
+    print(rspec['tier1pri']['route_advertisement_types'])
+    if 'TIER1_CONNECTED' in rspec['tier1pri']['route_advertisement_types']:
+        if 'TIER1_CONNECTED' in rspec['tier1dr']['route_advertisement_types']:
+            rspec['exMsg'] = "T1 Connected in both routers - config not applied"
+            return rspec
+        rspec['tier1dr']['route_advertisement_types'].append('TIER1_CONNECTED')
+        rspec['tier1pri']['route_advertisement_types'].remove('TIER1_CONNECTED')
+        rspec['scriptState'] = True
+        rspec['exMsg'] = "Connected route added to DR"
+        return rspec
+    else:
+        if 'TIER1_CONNECTED' in rspec['tier1dr']['route_advertisement_types']:
+            if 'TIER1_CONNECTED' in rspec['tier1pri']['route_advertisement_types']:
+                rspec['exMsg'] = "T1 Connected in both routers - config not applied"
+                rspec['scriptState'] = False
+                return rspec
+            rspec['tier1dr']['route_advertisement_types'].remove('TIER1_CONNECTED')
+            rspec['tier1pri']['route_advertisement_types'].append('TIER1_CONNECTED')
+            rspec['scriptState'] = True
+            rspec['exMsg'] = "Connected route added to PRI"
+            print(rspec['tier1pri']['route_advertisement_types'])
+            return rspec
+    rspec['exMsg'] = "T1 Connected in both routers - config not applied"
+    rspec['scriptState'] = False
+    return rspec
+
+
 def setDRroute(rs):
     if rs['scriptState']:
         rs['old_tier1pri'] = rs['tier1pri']
         rs['old_tier1dr'] = rs['tier1dr']
+
         payloaddr = {
             '_revision': rs['tier1dr']['_revision'],
             'route_advertisement_types': rs['tier1pri']['route_advertisement_types'],
@@ -250,6 +281,30 @@ def setDRroute(rs):
         payloadpri = {
             '_revision': rs['tier1pri']['_revision'],
             'route_advertisement_types': rs['tier1dr']['route_advertisement_types'],
+            'display_name': rs['tier1pri']['display_name']
+        }
+        drputstate = putURL(rs['drpath'], payloaddr, sslcheck)
+        priputstate = putURL(rs['pripath'], payloadpri, sslcheck)
+        rs['tier1pri'] = json.loads(priputstate)
+        rs['tier1dr'] = json.loads(drputstate)
+        rs['scriptState'] = True
+        rs['scriptmsg'] = "Config Applied Primary: " + str(payloadpri['route_advertisement_types']) + \
+                          ' Config Applied DR: ' + str(payloaddr['route_advertisement_types'])
+    return rs
+
+
+def setroute(rs):
+    if rs['scriptState']:
+        rs['old_tier1pri'] = rs['tier1pri']
+        rs['old_tier1dr'] = rs['tier1dr']
+        payloaddr = {
+            '_revision': rs['tier1dr']['_revision'],
+            'route_advertisement_types': rs['tier1dr']['route_advertisement_types'],
+            'display_name': rs['tier1dr']['display_name']
+        }
+        payloadpri = {
+            '_revision': rs['tier1pri']['_revision'],
+            'route_advertisement_types': rs['tier1pri']['route_advertisement_types'],
             'display_name': rs['tier1pri']['display_name']
         }
         drputstate = putURL(rs['drpath'], payloaddr, sslcheck)
@@ -380,15 +435,15 @@ def main(argv):
         print('\r\n')
         print(rspec['scriptmsg'])
     elif argv[1] == "execute":
-        rspec = execute()
-        print('\r\n')
-        print(rspec)
+        rspec = adcon()
+        rspec = setroute(rspec)
         print('\r\n')
         print(rspec['exMsg'])
         print('\r\n')
+        print(rspec['scriptmsg'])
+        print('\r\n')
         print(rspec)
         print('\r\n')
-        print('Executed as part of ' + str(vmrecoveryname) + ' - ' + str(vmrecoverymode))
     else:
         print('No argument set')
 
