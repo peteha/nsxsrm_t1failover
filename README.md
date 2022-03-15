@@ -18,7 +18,7 @@ Script arguments:
 - `checkfailback` - Checks the configuration matches the stored states in the "Failover" state
 - `failover` - Moves the routing config from Primary to DR - checks config before operation
 - `failback` - Moves the routing config from DR to Primary - checks config before operation
-- `execute` - Switches DR and Primary TIER1
+- `execute` - Switches DR and Primary - 'connected routes'
 
 
 Timeout has been added to execute the script against virtual machines.  To change the timeout change the 'conn_timeout' 
