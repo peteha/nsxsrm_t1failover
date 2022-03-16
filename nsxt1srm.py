@@ -241,7 +241,6 @@ def execute():
 def adcon():
     rspec = confirmRouters()
     rspec = t1State(rspec)
-    print(rspec['tier1pri']['route_advertisement_types'])
     if 'TIER1_CONNECTED' in rspec['tier1pri']['route_advertisement_types']:
         if 'TIER1_CONNECTED' in rspec['tier1dr']['route_advertisement_types']:
             rspec['exMsg'] = "T1 Connected in both routers - config not applied"
@@ -261,7 +260,6 @@ def adcon():
             rspec['tier1pri']['route_advertisement_types'].append('TIER1_CONNECTED')
             rspec['scriptState'] = True
             rspec['exMsg'] = "Connected route added to PRI"
-            print(rspec['tier1pri']['route_advertisement_types'])
             return rspec
     rspec['exMsg'] = "T1 Connected in both routers - config not applied"
     rspec['scriptState'] = False
@@ -300,11 +298,13 @@ def setroute(rs):
         payloaddr = {
             '_revision': rs['tier1dr']['_revision'],
             'route_advertisement_types': rs['tier1dr']['route_advertisement_types'],
+            'tier0_path': rs['tier1dr']['tier0_path'],
             'display_name': rs['tier1dr']['display_name']
         }
         payloadpri = {
             '_revision': rs['tier1pri']['_revision'],
             'route_advertisement_types': rs['tier1pri']['route_advertisement_types'],
+            'tier0_path': rs['tier1pri']['tier0_path'],
             'display_name': rs['tier1pri']['display_name']
         }
         drputstate = putURL(rs['drpath'], payloaddr, sslcheck)
