@@ -130,3 +130,7 @@ dmypy.json
 
 # Pickle Files
 *.p
+
+# Pycharm
+.idea
+
